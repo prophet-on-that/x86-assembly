@@ -18,7 +18,9 @@ _start:
 
   ## Open file
   mov $5, %eax                  # open system call
-  mov $filename, %ebx
+  ## TODO: check argc, use stdin if not provided
+  mov (%ebp), %ebx
+  mov 8(%ebp), %ebx             # EBX := ARGV[1]
   mov $0, %ecx                  # O_RDONLY
   int $0x80
   test %eax, %eax
@@ -127,10 +129,6 @@ sprintd_end:
   pop %ebx
   leave
   ret
-
-  .data
-filename:
-  .string "wc.s"
 
   .bss
 buffer:
