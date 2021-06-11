@@ -11,10 +11,12 @@ _start:
   Local variables:
     - -4(%ebp): file descriptor
     - -8(%ebp): count of newlines
+    - -12(%ebp): count of words
   */
   mov %esp, %ebp
-  sub $8, %esp
+  sub $12, %esp
   movl $0, -8(%ebp)
+  movl $0, -12(%ebp)
 
   ## Open file
   mov $5, %eax                  # open system call
@@ -26,6 +28,7 @@ _start:
   test %eax, %eax
   js open_error
   mov %eax, -4(%ebp)
+  mov $0, %esi                  # ESI holds whether we're currently processing a word
 
 read:
   ## Read from file into BUFFER
@@ -44,21 +47,57 @@ read_loop:
   sub $1, %ecx
   movzb buffer(,%ecx), %eax         # Move BUFFER[ECX] to eax
   cmp $'\n, %eax
+  je read_loop_newline
+  cmp $' ', %eax
+  je read_loop_whitespace
+  cmp $'\t', %eax
+  je read_loop_whitespace
+  cmp $10, %eax                 # Line feed
+  je read_loop_whitespace
+  cmp $11, %eax                 # Line tabulation
+  je read_loop_whitespace
+  cmp $12, %eax                 # Form feed
+  je read_loop_whitespace
+  ## Non-whitespace character
+  test %esi, %esi
   jne read_loop
+  mov $1, %esi                  # We're now processing a word
+  add $1, -12(%ebp)
+  jmp read_loop
+
+read_loop_newline:
   add $1, -8(%ebp)
+
+read_loop_whitespace:
+  mov $0, %esi
   jmp read_loop
 
 after_read_loop:
   cmp $512, %edx
   je read                       # Iterate if there is more file to process
 
-  ## TODO: print results
+  ## Write line count to buffer
   pushl $buffer
   pushl -8(%ebp)
   call sprintd
   add $8, %esp
+  mov %eax, %edx                # EDX := length of output
 
-  mov %eax, %edx
+  ## Write tab to buffer
+  movb $'\t', buffer(%edx)
+  inc %edx
+
+  ## Write word count to buffer
+  push %edx
+  lea buffer(%edx), %eax
+  push %eax
+  push -12(%ebp)
+  call sprintd
+  add $8, %esp
+  pop %edx
+  add %eax, %edx
+
+  ## Write output
   mov $4, %eax                  # write system call
   mov $1, %ebx                  # stdout
   mov $buffer, %ecx
@@ -88,11 +127,12 @@ sprintd:
   Ret    - buffer pointer after written string
   */
 
-  push %ebp
   mov %esp, %ebp
+  push %ebp
   push %ebx
-  mov 12(%ebp), %ebx            # EBX holds pointer to next entry of buffer
-  mov 8(%ebp), %eax
+  push %esi
+  mov 8(%ebp), %ebx            # EBX holds pointer to next entry of buffer
+  mov 4(%ebp), %eax
 
 sprintd_loop:
   cdq                           # Sign-extend eax into edx:eax
@@ -104,28 +144,23 @@ sprintd_loop:
   test %eax, %eax
   jnz sprintd_loop
 
-  sub 12(%ebp), %ebx            # EBX := length of output
+  mov 8(%ebp), %eax            # EBX := buffer
+  sub 8(%ebp), %ebx            # EBX := length of output
   mov %ebx, %ecx
   shr $1, %ecx                  # ECX := len / 2
   jz sprintd_end
 
 sprintd_reverse:
-  mov %ecx, %eax
-  dec %eax
-  movzb buffer(%eax), %edx        # EDX := buffer[EAX]
-  push %edx
-  mov %ebx, %edx
-  sub %ecx, %edx
-  movzb buffer(%edx), %edx        # EDX := buffer[EDX]
-  movb %dl, buffer(,%eax)        # buffer[EAX] := DL
-  pop %eax
-  mov %ebx, %edx
-  sub %ecx, %edx
-  movb %al, buffer(,%edx)        # bufffer[EDX] := AL
+  movzb -1(%eax, %ecx), %edx      # EDX := buffer[ECX - 1]
+  mov %ebx, %esi
+  sub %ecx, %esi
+  xchg (%eax, %esi), %dl      # Exchange DL with buffer[EBX - ECX]
+  movb %dl, -1(%eax, %ecx)     # buffer[ECX - 1] := DL
   loop sprintd_reverse
 
 sprintd_end:
-  mov %ebx, %eax                # EAX := lengh of output
+  mov %ebx, %eax                # EAX := length of output
+  pop %esi
   pop %ebx
   leave
   ret
