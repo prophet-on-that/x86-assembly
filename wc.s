@@ -127,12 +127,12 @@ sprintd:
   Ret    - buffer pointer after written string
   */
 
-  mov %esp, %ebp
   push %ebp
+  mov %esp, %ebp
   push %ebx
   push %esi
-  mov 8(%ebp), %ebx            # EBX holds pointer to next entry of buffer
-  mov 4(%ebp), %eax
+  mov 12(%ebp), %ebx            # EBX holds pointer to next entry of buffer
+  mov 8(%ebp), %eax
 
 sprintd_loop:
   cdq                           # Sign-extend eax into edx:eax
@@ -144,8 +144,8 @@ sprintd_loop:
   test %eax, %eax
   jnz sprintd_loop
 
-  mov 8(%ebp), %eax            # EBX := buffer
-  sub 8(%ebp), %ebx            # EBX := length of output
+  mov 12(%ebp), %eax            # EBX := buffer
+  sub 12(%ebp), %ebx            # EBX := length of output
   mov %ebx, %ecx
   shr $1, %ecx                  # ECX := len / 2
   jz sprintd_end
