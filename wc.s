@@ -18,9 +18,13 @@ _start:
   movl $0, -8(%ebp)
   movl $0, -12(%ebp)
 
+  ## Check operating mode (file or stdin)
+  mov (%ebp), %eax              # EAX := ARGC
+  cmp $1, %eax
+  jle read_stdin
+
   ## Open file
   mov $5, %eax                  # open system call
-  ## TODO: check argc, use stdin if not provided
   mov (%ebp), %ebx
   mov 8(%ebp), %ebx             # EBX := ARGV[1]
   mov $0, %ecx                  # O_RDONLY
@@ -29,6 +33,10 @@ _start:
   js open_error
   mov %eax, -4(%ebp)
   mov $0, %esi                  # ESI holds whether we're currently processing a word
+  jmp read
+
+read_stdin:
+  movl $0, -4(%ebp)
 
 read:
   ## Read from file into BUFFER
@@ -38,12 +46,13 @@ read:
   mov $512, %edx                # TODO: remove duplication of buffer size
   int $0x80
   test %eax, %eax
-  js read_error
+  jz after_read
+  ## TODO: test for response error (< 0)
   mov %eax, %ecx
   mov %eax, %edx
 
 read_loop:
-  jecxz after_read_loop
+  jecxz read
   sub $1, %ecx
   movzb buffer(,%ecx), %eax         # Move BUFFER[ECX] to eax
   cmp $'\n, %eax
@@ -72,10 +81,7 @@ read_loop_whitespace:
   mov $0, %esi
   jmp read_loop
 
-after_read_loop:
-  cmp $512, %edx
-  je read                       # Iterate if there is more file to process
-
+after_read:
   ## Write line count to buffer
   pushl $buffer
   pushl -8(%ebp)
